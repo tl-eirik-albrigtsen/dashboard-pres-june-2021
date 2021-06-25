@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+    <title>reveal-md</title>
+    <meta property="og:title" content="reveal-md" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://tl-eirik-albrigtsen.github.io/dashboard-pres-june-2021//featured-slide.jpg" />
+    <meta property="og:url" content="https://tl-eirik-albrigtsen.github.io/dashboard-pres-june-2021/" />
+    <link rel="stylesheet" href="./dist/reveal.css" />
+    <link rel="stylesheet" href="./dist/theme/black.css" id="theme" />
+    <link rel="stylesheet" href="./css/highlight/zenburn.css" />
+
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides"><section  data-markdown><script type="text/template">### grafana migration
+<style type="text/css">
+  .reveal h3, .reveal p, .reveal h4 {
+    text-transform: none;
+    text-align: left;
+  }
+  .reveal ul {
+    display: block;
+  }
+  .reveal ol {
+    display: block;
+  }
+  .reveal {
+    background: #353535 !important;
+  }
+  .green {
+      color: #00ff00;
+  }
+</style>
+
+<small>`gitops-monitoring` ➝ [`kube-prometheus-stack`](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) chart</small>
+
+<p class="fragment">scaling prometheus with thanos</p>
+<p class="fragment">=> Standardised Cluster Dashboards</p>
+<p class="fragment">=> Grafana being migrated</p>
+<p class="fragment">=> Managed Dashboards</p>
+
+
+<aside class="notes"><ul>
+<li>crucial time, we are migrating our kubernetes o11y stack (part of scalability w/thanos)</li>
+<li>prom/grafana/alertmanager/metric scraping components/hpa integrations/thanos all managed together in one chart (bundling KPS)</li>
+<li>small invis improv: less divergence between envirionments, less implicit coupling, less yaml maintain, free upgrades from community helm charts</li>
+<li>free community dashboards (thanks to standardised metrics and labels)</li>
+<li>but of course grafana also migrates</li>
+<li>this setup requires managed dashboards, so we are taking advantage of this to solve two problems</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">### Grafana Current
+
+
+- [grafana.truelayer-sandbox.com](https://grafana.truelayer-sandbox.com)
+- [grafana.t7r.dev](https://grafana.t7r.dev)
+- [grafana.truelayer.com](https://grafana.truelayer.com)
+
+<aside class="notes"><ul>
+<li>one per environment, isolation, up to date (so that&#39;s good)</li>
+<li>dashboards; no consistency 34 sandbox, 83 dev, 75 prod</li>
+<li>no sense of what&#39;s canonical, no backups of prod dashboards</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">### Grafana New
+
+- [grafana-new.truelayer-sandbox.com](https://grafana-new.truelayer-sandbox.com)
+- [grafana-new.t7r.dev](https://grafana-new.t7r.dev)
+- [grafana-new.truelayer.com](https://grafana-new.truelayer.com)
+
+<aside class="notes"><ul>
+<li>same dashboards in every environment (taken from prod, by popular demand)</li>
+<li>all dashboard ids stay the same, new prefix goes away, all urls should be the same after</li>
+<li>should not be a visibile migration</li>
+<li>scraping has not changed, so same data available, but it goes through thanos</li>
+<li>but the problem here is of course how can we edit dashboards, if they all use the same ones?</li>
+<li>this is really where we have a new big nono</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">
+<!-- .slide: data-background-image="./nonono.gif" data-background-size="100% auto" class="color"-->
+
+<aside class="notes"><ul>
+<li>you cannot save dashboards on the grafana interface</li>
+<li>for some reason i&#39;ve been hearing this audio clip constantly (of bitconnect guy&#39;s charismatic mm mm nonono), so eh, enjoy your 2017 meme</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">
+<!-- .slide: data-background-image="./provisioning_cannot_save_dashboard.png" data-background-size="50% auto" class="color"-->
+
+<aside class="notes"><ul>
+<li>but by this popup</li>
+<li>so that sucks, and there is an extra step here now (even tho i distracted you with memes)</li>
+<li>Copy the JSON to Clipboard (either dialog, or in dashboard settings)</li>
+<li>goto <code>gitops-monitoring</code></li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">
+<!-- .slide: data-background-image="./configmap.png" data-background-size="50% auto" class="color"-->
+
+<aside class="notes"><ul>
+<li>gitops-monitoring has a global dashboard folder with all dashboards</li>
+<li>they all look like this, they are k8s configmaps</li>
+<li>labels etc, there&#39;s this fancy generic sidecar that listens for changes to configmaps with a configurable label, and mounts the contents to fs, in the right subfolder</li>
+<li>not a grafana thing btw, grafana doesn&#39;t listen for cm changes, everyone can use such a sidecar</li>
+<li>and then we put these in every environment</li>
+<li>you might say, well that&#39;s a lot of cruft, and yeah, but you don&#39;t have to write it.</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">### Saving Dashboards
+
+<small>With json model on clipboard:</small>
+
+```sh
+cd gitops-monitoring
+./dashboard.sh payments # create dashboard file
+make dashboards # update links
+git add dashboards */dashboards
+git commit -am "Update payments dashboard"
+```
+
+<small class="fragment">requires: [jq](https://stedolan.github.io/jq/download/), [python-yq](https://kislyuk.github.io/yq/)</small>
+
+<aside class="notes"><ul>
+<li>first script reads your clipboard, wraps it in a configmap and puts it into the right folder</li>
+<li>second one refreshes all dashboards in development/sandbox/production subfolders (they symlink to this dashboards folder)</li>
+<li>that&#39;s the flow. hopefully not too bad</li>
+<li>does require jq/yq tools to massage json/yaml on CL. if working with k8s, you might already have them, otherwise get them, great, compatible apis</li>
+<li>does have to be in gitops-monitoring monitoring only cm ATM (trying to evolve this)</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-image="./configmap.png" data-background-size="50% auto" class="color"-->
+
+<aside class="notes"><ul>
+<li>filenames need to be unique (within a grafana_folder)</li>
+<li>no need to think about it with our script</li>
+<li>result you should expect (in a diff)</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-image="./configmap-minified.png" data-background-size="90% auto" class="color"-->
+
+<aside class="notes"><ul>
+<li>however you might the this unreadable mess (250k char scrollbar)</li>
+<li>happens if you have extremely large dashboards</li>
+<li>that&#39;s to get our largest dashboards accepted, there&#39;s a kubernetes hard limit on the size of configmaps 1MB, and annotation fields of 260k characters</li>
+<li>so if it looks like this, you are close to the limit, just FYI</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">### Migration
+
+We sync prod dashboards to gitops-monitoring
+
+<small class="fragment">One final time.</small>
+
+<aside class="notes"><ul>
+<li>we sync. we have been doing this for a few weeks already.</li>
+<li>any changes you make to prod grafana will make it into this repo.</li>
+<li>no need to edit/import to git yet, but once we do our final sync, then it&#39;s all github</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">### When!?
+
+<p class="fragment">SOMETIME NEXT WEEK</p>
+<small class="fragment"><a>grafana.t7r.dev</a> / <a>grafana.truelayer.com</a> / <a>grafana.truelayer-sandbox.com</a></small>
+
+<small class="fragment"><a>#engineering</a> notice to come</small>
+
+<aside class="notes"><ul>
+<li>really close, next week, save for any unforseen delays</li>
+<li>some point swap urls, takes over the urls you know</li>
+<li>currently you have to prefix with -new</li>
+<li>once we give final confirmation (fragment)</li>
+<li>old grafana stops being canonical, and everything will look the same, and point to new</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">### Subtle Points: Editing
+
+- `"editable": false` (not required)
+- removes intrusive save changes popup
+- removes `Panel -> Edit` button
+
+![](./editable.png)
+
+<aside class="notes"><ul>
+<li>small things you can do; turn off <code>editable</code></li>
+<li>not req, because as i just said; you cannot save on new grafana (popup)</li>
+<li>but will avoid the popup asking you to save, everytime you change a tabs visibility</li>
+<li>has the downside of removing the panel edit, so slightly more difficult if you want to see what query a panel runs</li>
+<li>can&#39;t mandate this, if you feel db is super mature and you know what it&#39;s visualising, feel free to turn it off, it&#39;s only 3 clicks for users to turn it on</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">### Subtle Points: Collaboration
+
+<small class="fragment"><a>grafana-scratch.t7r.dev</a><br><a>grafana-scratch.truelayer.com</a><br> <a>grafana-scratch.truelayer-sandbox.com</a></small>
+
+<small class="fragment">NO NEED TO GO HERE</small>
+
+<aside class="notes"><ul>
+<li>old grafana will be renamed to this</li>
+<li>this is to collaborate on dashboards</li>
+<li>NO NEED TO USE; CAN EDIT ON NEW GRAFANA JUST NOT SAVE, COPY AFTER</li>
+<li>these will likely be periodically wiped, so please don&#39;t try use this just to avoid git</li>
+<li>tell us problems with the new flow</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">### Subtle Points: Cloudwatch
+
+- cloudwatch datasource
+- cloudwatch dev/prod hardcode
+
+<aside class="notes"><ul>
+<li>only outstanding issues that we will fix before going live</li>
+<li>cloudwatch metrics missing (that&#39;s the blocker)</li>
+<li>cannot re-use these dashboards, coz they hardcode db names</li>
+<li>so either we parametrise the db names, or special case them</li>
+<li>there&#39;s like 6 of them</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">### Cloudwatch dashboards
+
+- analytics/athena-usage.yaml
+- connectivity/provider-registry-metrics.yaml
+- connectivity/secret-service-metrics.yaml
+- core/auth-server.yaml
+- data-api/async-qman.yaml
+- devops/aws-rds.yaml
+
+<aside class="notes"><ul>
+<li>if you own one of these 6 dashboards, it might happen to you</li>
+<li>feel free to reach out</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">### TL;DW Grafana Dashboard Gitops
+
+<small>With json model on clipboard:</small>
+
+```sh
+cd gitops-monitoring
+./dashboard.sh payments # create dashboard file
+make dashboards # update links
+git add dashboards */dashboards
+git commit -am "Update payments dashboard"
+```
+
+NEXT WEEK
+
+<aside class="notes"><ul>
+<li>tldw, what you need next week after our notice in engineering</li>
+<li>that&#39;s it. thank for listening to this.</li>
+<li>i have two slides of potential future steps</li>
+<li>but ill look at questions now</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">Future steps
+
+- declarative dashboards?
+- dashboards generated along with alerts?
+<small class="fragment">See [How we are dealing with metrics at scale on gitlab.com](https://www.youtube.com/watch?v=6sfr2IGJQXk)</small>
+
+<aside class="notes"><ul>
+<li>grafanalib / grafonnet (what KPS uses, jsonnet, learning curve) / polly</li>
+<li>ensures dashboards and alerts are sync&#39;d (future dashboard lifecycle problem)</li>
+<li>gitlab had a great talk on this</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">
+<!-- .slide: data-background-image="./polly.png" data-background-size="60% auto" class="color"-->
+
+<aside class="notes"><ul>
+<li>polly via scuemata, grafanas schemas announced grafanacon last week</li>
+<li>(parametrised o11y config)</li>
+<li><a href="https://pollypkg.github.io/polly/basics.html">https://pollypkg.github.io/polly/basics.html</a></li>
+<li>by guy who wrote <code>dep</code> for golang</li>
+</ul>
+</aside></script></section></div>
+    </div>
+
+    <script src="./dist/reveal.js"></script>
+
+    <script src="./plugin/markdown/markdown.js"></script>
+    <script src="./plugin/highlight/highlight.js"></script>
+    <script src="./plugin/zoom/zoom.js"></script>
+    <script src="./plugin/notes/notes.js"></script>
+    <script src="./plugin/math/math.js"></script>
+    <script>
+      function extend() {
+        var target = {};
+        for (var i = 0; i < arguments.length; i++) {
+          var source = arguments[i];
+          for (var key in source) {
+            if (source.hasOwnProperty(key)) {
+              target[key] = source[key];
+            }
+          }
+        }
+        return target;
+      }
+
+      // default options to init reveal.js
+      var defaultOptions = {
+        controls: true,
+        progress: true,
+        history: true,
+        center: true,
+        transition: 'default', // none/fade/slide/convex/concave/zoom
+        plugins: [
+          RevealMarkdown,
+          RevealHighlight,
+          RevealZoom,
+          RevealNotes,
+          RevealMath
+        ]
+      };
+
+      // options from URL query string
+      var queryOptions = Reveal().getQueryHash() || {};
+
+      var options = extend(defaultOptions, {"progress":true,"transition":"none"}, queryOptions);
+    </script>
+
+
+    <script>
+      Reveal.initialize(options);
+    </script>
+  </body>
+</html>
