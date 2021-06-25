@@ -9,7 +9,7 @@ npm install -g reveal-md
 ## Usage
 
 ```sh
-reveal-md slides.md
+make serve
 ```
 
-you can also peek at my slidenotes by pressing `s` or reading the markdown.
+you can also peek at my slidenotes by pressing `s` or reading the [markdown](./source/slides.md).
